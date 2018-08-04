@@ -1,22 +1,20 @@
-// TODO: implement fuzzy sets, implications, defuzzification
-// TODO: prettify display
-// TODO: let user pick some input and start
-
 function HillyRoad () {
-  let angleCounter = 0;
+  let roadAngleCounter = 0;
 
   const road = {
-    currentAngle: 0,
-    updateAngle: function () {
-      this.currentAngle = Math.sin(angleCounter) * 15;
-      angleCounter += Math.PI * 2 / 1000;
+    currentRoadAngle: 0,
+    updateRoadAngle: function () {
+      this.currentRoadAngle = Math.sin(roadAngleCounter) * 20;
+      roadAngleCounter += Math.PI * 2 / 1000;
     },
     tick: function () {
-      this.updateAngle();
+      // this represents the road's angle changing as we drive along it
+      this.updateRoadAngle();
     },
     toString: function () {
       let output = "";
-      output += "<p>road angle: " + this.currentAngle + "</p>";
+      output += "<h2>ROAD</h2>";
+      output += "<p>road angle: " + this.currentRoadAngle.toFixed(1) + "</p>";
       return output;
     },
   };
@@ -25,51 +23,20 @@ function HillyRoad () {
 };
 
 function Car () {
-  const initialSpeed = 60000;
-  const targetSpeed = 70000;
-
-  const states = {
-    NO_ACTION: 1,
-    ACCELERATING_SOFT: 2,
-    ACCELERATING_HARD: 3,
-    BRAKING_SOFT: 4,
-    BRAKING_HARD: 5,
-    properties: {
-      1: { speedImpact: 0, name: "maintain" },
-      2: { speedImpact: 30, name: "accelerating soft" },
-      3: { speedImpact: 50, name: "accelerating hard" },
-      4: { speedImpact: -30, name: "braking soft" },
-      5: { speedImpact: -50, name: "braking hard" },
-    },
-  };
+  const initialSpeed = 60;
+  const targetSpeed = 70;
 
   const car = {
     currentSpeed: initialSpeed,
     targetSpeed: targetSpeed,
-    currentState: states.NO_ACTION,
-    maintainSpeed: function () {
-      this.currentState = states.NO_ACTION;
-    },
-    accelerateSoft: function () {
-      this.currentState = states.ACCELERATING_SOFT;
-    },
-    accelerateHard: function () {
-      this.currentState = states.ACCELERATING_HARD;
-    },
-    brakeSoft: function () {
-      this.currentState = states.BRAKING_SOFT;
-    },
-    brakeHard: function () {
-      this.currentState = states.BRAKING_HARD;
-    },
     tick: function () {
-      this.currentSpeed += states.properties[this.currentState].speedImpact;
+      // no internal changes produced in this simple model
     },
     toString: function () {
       let output = "";
-      output += "<p>current action: " + states.properties[this.currentState].name + "</p>";
-      output += "<p>current speed: " + this.currentSpeed / 1000 + "</p>";
-      output += "<p>target speed: " + this.targetSpeed / 1000 + "</p>";
+      output += "<h2>CAR</h2>";
+      output += "<p>current speed: " + this.currentSpeed.toFixed(1) + "</p>";
+      output += "<p>target speed: " + this.targetSpeed.toFixed(1) + "</p>";
       return output;
     },
   };
@@ -78,43 +45,242 @@ function Car () {
 };
 
 function FuzzyController (road, car) {
+  const ROAD_ANGLE_LOWER_BOUND = -15.0;
+  const ROAD_ANGLE_UPPER_BOUND = 15.0;
+  const roadAngleStates = {
+    DOWNHILL: 1,
+    FLAT: 2,
+    UPHILL: 3,
+    properties: {
+      1: { 
+        membership: function (angle) {
+          if (angle < ROAD_ANGLE_LOWER_BOUND) return 1;
+          if (angle < 0) return angle / ROAD_ANGLE_LOWER_BOUND;
+          return 0;
+        },
+        name: "downhill"
+      },
+      2: { 
+        membership: function (angle) {
+          if (angle > ROAD_ANGLE_LOWER_BOUND && angle < ROAD_ANGLE_UPPER_BOUND)
+            return (ROAD_ANGLE_UPPER_BOUND - Math.abs(angle)) / ROAD_ANGLE_UPPER_BOUND;
+          return 0;
+        },
+        name: "flat"
+      },
+      3: { 
+        membership: function (angle) {
+          if (angle > ROAD_ANGLE_UPPER_BOUND) return 1;
+          if (angle > 0) return angle / ROAD_ANGLE_UPPER_BOUND;
+          return 0;
+        },
+        name: "uphill"
+      },
+    },
+  };
+
+  const RELATIVE_SPEED_LOWER_BOUND = -5.0;
+  const RELATIVE_SPEED_UPPER_BOUND = 5.0;
   const relativeSpeedStates = {
     UNDER: 1,
     MATCHED: 2,
     OVER: 3,
     properties: {
-      1: { value: "TODO", name: "under" },
-      2: { value: "TODO", name: "matched" },
-      3: { value: "TODO", name: "over" },
+      1: {
+        membership: function (speed) {
+          if (speed < RELATIVE_SPEED_LOWER_BOUND) return 1;
+          if (speed < 0) return speed / RELATIVE_SPEED_LOWER_BOUND;
+          return 0;
+        },
+        name: "under"
+      },
+      2: {
+        membership: function (speed) {
+          if (speed > RELATIVE_SPEED_LOWER_BOUND && speed < RELATIVE_SPEED_UPPER_BOUND)
+            return (RELATIVE_SPEED_UPPER_BOUND - Math.abs(speed)) / RELATIVE_SPEED_UPPER_BOUND;
+          return 0;
+        },
+        name: "matched"
+      },
+      3: {
+        membership: function (speed) {
+          if (speed > RELATIVE_SPEED_UPPER_BOUND) return 1;
+          if (speed > 0) return speed / RELATIVE_SPEED_UPPER_BOUND;
+          return 0;
+        },
+        name: "over"
+      },
     },
   };
 
-  const angleStates = {
-    FLAT: 1,
-    UPHILL: 2,
-    DOWNHILL: 3,
+  const carActionStates = {
+    BRAKE_HARD: 1,
+    BRAKE_SOFT: 2,
+    MAINTAIN: 3,
+    ACCELERATE_SOFT: 4,
+    ACCELERATE_HARD: 5,
     properties: {
-      1: { value: "TODO", name: "flat" },
-      2: { value: "TODO", name: "uphill" },
-      3: { value: "TODO", name: "downhill" },
+      1: {
+        name: "braking hard",
+        estimateOutput: function (antecedentStrength) {
+          const maxBrakeImpact = 0.2;
+          const moderatedMax = maxBrakeImpact * antecedentStrength;
+          const pivot = Math.min(0.08, moderatedMax);
+          const cutoff = 0.04;
+          return (moderatedMax > cutoff) ? -(moderatedMax + (pivot - cutoff) / 2) : 0;
+        },
+      },
+      2: {
+        name: "braking soft",
+        estimateOutput: function (antecedentStrength) {
+          const maxBrakeImpact = 0.8;
+          const moderatedMax = maxBrakeImpact * antecedentStrength;
+          const pivot = Math.min(0.04, moderatedMax);
+          const cutoff = 0.00;
+          return -(moderatedMax + (pivot - cutoff) / 2);
+        },
+      },
+      3: {
+        name: "maintain",
+        estimateOutput: function (antecedentStrength) {
+          return 0;
+        },
+      },
+      4: {
+        name: "accelerating soft",
+        estimateOutput: function (antecedentStrength) {
+          const maxAccelerationImpact = 0.8;
+          const moderatedMax = maxAccelerationImpact * antecedentStrength;
+          const pivot = Math.min(0.04, moderatedMax);
+          const cutoff = 0.00;
+          return moderatedMax + (pivot - cutoff) / 2;
+        },
+      },
+      5: {
+        name: "accelerating hard",
+        estimateOutput: function (antecedentStrength) {
+          const maxAccelerationImpact = 0.2;
+          const moderatedMax = maxAccelerationImpact * antecedentStrength;
+          const pivot = Math.min(0.08, moderatedMax);
+          const cutoff = 0.04;
+          return (moderatedMax > cutoff) ? moderatedMax + (pivot - cutoff) / 2 : 0;
+        },
+      },
     },
   };
+
+  const rules = [
+    {
+      roadAngleState: roadAngleStates.DOWNHILL,
+      relativeSpeedState : relativeSpeedStates.OVER,
+      carActionState: carActionStates.BRAKE_HARD,
+    },
+    {
+      roadAngleState: roadAngleStates.FLAT,
+      relativeSpeedState : relativeSpeedStates.OVER,
+      carActionState: carActionStates.BRAKE_SOFT,
+    },
+    {
+      roadAngleState: roadAngleStates.DOWNHILL,
+      relativeSpeedState : relativeSpeedStates.MATCHED,
+      carActionState: carActionStates.BRAKE_SOFT,
+    },
+    {
+      roadAngleState: roadAngleStates.UPHILL,
+      relativeSpeedState : relativeSpeedStates.OVER,
+      carActionState: carActionStates.MAINTAIN,
+    },
+    {
+      roadAngleState: roadAngleStates.FLAT,
+      relativeSpeedState : relativeSpeedStates.MATCHED,
+      carActionState: carActionStates.MAINTAIN,
+    },
+    {
+      roadAngleState: roadAngleStates.DOWNHILL,
+      relativeSpeedState : relativeSpeedStates.UNDER,
+      carActionState: carActionStates.MAINTAIN,
+    },
+    {
+      roadAngleState: roadAngleStates.UPHILL,
+      relativeSpeedState : relativeSpeedStates.MATCHED,
+      carActionState: carActionStates.ACCELERATE_SOFT,
+    },
+    {
+      roadAngleState: roadAngleStates.FLAT,
+      relativeSpeedState : relativeSpeedStates.UNDER,
+      carActionState: carActionStates.ACCELERATE_SOFT,
+    },
+    {
+      roadAngleState: roadAngleStates.UPHILL,
+      relativeSpeedState : relativeSpeedStates.UNDER,
+      carActionState: carActionStates.BRAKE_HARD,
+    },
+  ];
 
   const controller = {
-    currentRelativeSpeedState: null,
-    currentAngleState: null,
-    calculateRelativeSpeed: function () {
+    currentRoadAngleStates: {},
+    currentRelativeSpeedStates: {},
+    currentCarActionStates: {},
+    calculateRelativeSpeed: function (car) {
+      return car.currentSpeed - car.targetSpeed;
     },
     tick: function () {
       road.tick();
       car.tick();
-      // TODO: fuzzy control here
-      // calculate output from our inputs (speed difference, road angle) and update car state
+
+      // fuzzification
+      const angle = road.currentRoadAngle;
+      [roadAngleStates.DOWNHILL, roadAngleStates.FLAT, roadAngleStates.UPHILL].forEach(function (state) {
+        this.currentRoadAngleStates[state] = roadAngleStates.properties[state].membership(angle);
+      }, this);
+
+      const speed = this.calculateRelativeSpeed(car);
+      [relativeSpeedStates.UNDER, relativeSpeedStates.MATCHED, relativeSpeedStates.OVER].forEach(function (state) {
+          this.currentRelativeSpeedStates[state] = relativeSpeedStates.properties[state].membership(speed);
+      }, this);
+
+      // reset our car action states so we can recalculate them summatively
+      [carActionStates.BRAKE_HARD, carActionStates.BRAKE_SOFT, carActionStates.MAINTAIN, carActionStates.ACCELERATE_SOFT, carActionStates.ACCELERATE_HARD].forEach(function (state) {
+        this.currentCarActionStates[state] = 0;
+      }, this);
+
+      // use rules to compute output, using product t norm
+      rules.forEach(function (rule) {
+        const antecedentStrength = this.currentRoadAngleStates[rule.roadAngleState] * this.currentRelativeSpeedStates[rule.relativeSpeedState];
+
+        // defuzzify
+        this.currentCarActionStates[rule.carActionState] += carActionStates.properties[rule.carActionState].estimateOutput(antecedentStrength);
+      }, this);
+
+      // apply defuzzified values to car speed
+      [carActionStates.BRAKE_HARD, carActionStates.BRAKE_SOFT, carActionStates.MAINTAIN, carActionStates.ACCELERATE_SOFT, carActionStates.ACCELERATE_HARD].forEach(function (state) {
+        car.currentSpeed += this.currentCarActionStates[state];
+      }, this);
     },
     toString: function () {
       let output = "";
-      output += "<p>relative speed set membership: " + relativeSpeedStates.properties[this.currentRelativeSpeedState].name + "</p>";
-      output += "<p>angle set membership: " + angleStates.properties[this.currentAngleState].name + "</p>";
+      output += "<h2>FUZZY CONTROLLER</h2>";
+      output += "<h4>road angle set membership:</h4>";
+      output += "<ul>";
+      [roadAngleStates.DOWNHILL, roadAngleStates.FLAT, roadAngleStates.UPHILL].forEach(function (state) {
+        output += "<li>" + roadAngleStates.properties[state].name + ": " + this.currentRoadAngleStates[state].toFixed(1) + "</li>";
+      }, this);
+      output += "</ul>";
+
+      output += "<h4>relative speed set membership:</h4>";
+      output += "<ul>";
+      [relativeSpeedStates.UNDER, relativeSpeedStates.MATCHED, relativeSpeedStates.OVER].forEach(function (state) {
+        output += "<li>" + relativeSpeedStates.properties[state].name + ": " + this.currentRelativeSpeedStates[state].toFixed(1) + "</li>";
+      }, this);
+      output += "</ul>";
+
+      output += "<h4>car action output:</h4>";
+      output += "<ul>";
+      [carActionStates.BRAKE_HARD, carActionStates.BRAKE_SOFT, carActionStates.MAINTAIN, carActionStates.ACCELERATE_SOFT, carActionStates.ACCELERATE_HARD].forEach(function (state) {
+        output += "<li>" + carActionStates.properties[state].name + ": " + this.currentCarActionStates[state].toFixed(1) + "</li>";
+      }, this);
+      output += "</ul>";
+
       return output
     },
   };
@@ -135,16 +301,21 @@ function Simulator () {
 
       const simulationFrame = function () {
         controller.tick();
-        element.innerHTML = road.toString() + car.toString() // TODO + controller.toString();
+        element.innerHTML = road.toString() + car.toString() + controller.toString();
       };
 
       const intervalId = setInterval(simulationFrame, FRAME_SPEED_IN_MS);
 
       setTimeout(function () {
         clearInterval(intervalId);
-      }, 30000);
+      }, 60000);
     },
   };
 
   return simulator;
 };
+
+function go () {
+  var s = new Simulator();
+  s.start();
+}
